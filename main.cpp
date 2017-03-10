@@ -59,6 +59,13 @@ struct projectile
 	bool alive;
 };
 
+struct enemy
+{
+	int x, y;
+	bool alive;
+	int lives;
+};
+
 struct globals
 {
 	SDL_Window* window = nullptr;
@@ -66,15 +73,21 @@ struct globals
 	SDL_Texture* background = nullptr;
 	SDL_Texture* ship = nullptr;
 	SDL_Texture* shot = nullptr;
+	SDL_Texture* powerUpTexture = nullptr;
+	SDL_Texture* enemyTexture = nullptr;
 	int background_width = 0;
 	int ship_x = 0;
 	int ship_y = 0;
+	int ship_powerUp = 0;
 	int last_shot = 0;
-	bool fire, up, down, left, right;
+	bool fire, up, down, left, right, pRight, pUp,eUp;
 	Mix_Music* music = nullptr;
 	Mix_Chunk* fx_shoot = nullptr;
 	int scroll = 0;
 	projectile shots[NUM_SHOTS];
+	projectile shotPU;
+	projectile powerUp;
+	enemy myEnemy;
 } g; // automatically create an insteance called "g"
 
 // ----------------------------------------------------------------
@@ -90,7 +103,9 @@ void Start()
 	IMG_Init(IMG_INIT_PNG);
 	g.background = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/background.png"));
 	g.ship = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/ship.png"));
+	g.enemyTexture = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/Enemy.png"));
 	g.shot = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/shot.png"));
+	g.powerUpTexture = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/PowerUp.png"));
 	SDL_QueryTexture(g.background, nullptr, nullptr, &g.background_width, nullptr);
 
 	// Create mixer --
@@ -104,6 +119,16 @@ void Start()
 	g.ship_x = 100;
 	g.ship_y = SCREEN_HEIGHT / 2;
 	g.fire = g.up = g.down = g.left = g.right = false;
+	g.pUp = true;
+	g.eUp = true;
+	g.pRight = true;
+	g.powerUp.alive = false;
+	g.myEnemy.alive = true;
+	g.powerUp.y = SCREEN_HEIGHT / 2;
+	g.powerUp.x = SCREEN_WIDTH / 2;
+	g.powerUp.x = 1000;
+	g.myEnemy.x = g.myEnemy.x + 440;
+	g.myEnemy.lives = 3;
 }
 
 // ----------------------------------------------------------------
@@ -163,12 +188,90 @@ bool CheckInput()
 void MoveStuff()
 {
 	// Calc new ship position
-	if(g.up) g.ship_y -= SHIP_SPEED;
-	if(g.down) g.ship_y += SHIP_SPEED;
-	if(g.left) g.ship_x -= SHIP_SPEED;
-	if(g.right)	g.ship_x += SHIP_SPEED;
+	if(g.up && g.ship_y>0) g.ship_y -= SHIP_SPEED;
+	if(g.down && g.ship_y<420) g.ship_y += SHIP_SPEED;
+	if(g.left && g.ship_x>0) g.ship_x -= SHIP_SPEED;
+	if(g.right && g.ship_x<580)	g.ship_x += SHIP_SPEED;
 
-	if(g.fire)
+	if (g.myEnemy.alive && g.myEnemy.lives>0) {
+		if (g.eUp) {
+			if (g.myEnemy.y > 0 - 50) {
+				g.myEnemy.y -= 5;
+			}
+			else {
+				g.eUp = false;
+			}
+		}
+		else {
+			if (g.myEnemy.y < 280) {
+				g.myEnemy.y += 5;
+			}
+			else {
+				g.eUp = true;
+			}
+		}
+	}
+	else if (!g.powerUp.alive){
+		
+		g.myEnemy.alive = false;
+		g.powerUp.alive = true;
+		g.powerUp.x = 600;
+		g.powerUp.y = 200;
+		g.myEnemy.x = 1000;
+	}
+
+	if (g.powerUp.alive) {
+		if (g.pUp) {
+			if (g.powerUp.y > 0) {
+				g.powerUp.y -= 5;
+			}
+			else {
+				g.pUp = false;
+			}
+		}
+		else {
+			if (g.powerUp.y < 440) {
+				g.powerUp.y += 5;
+			}
+			else {
+				g.pUp = true;
+			}
+		}
+
+		if (g.pRight) {
+			if (g.powerUp.x < 600) {
+				g.powerUp.x += 5;
+			}
+			else {
+				g.pRight = false;
+			}
+		}
+		else {
+			if (g.powerUp.x > 0) {
+				g.powerUp.x -= 5;
+			}
+			else {
+				g.pRight = true;
+			}
+		}
+	}
+	else {
+		g.powerUp.alive = false;;
+	}
+
+	if (g.ship_powerUp == 1 && g.fire) {
+		
+		Mix_PlayChannel(-1, g.fx_shoot, 0);
+		g.fire = false;
+
+		if (g.last_shot == NUM_SHOTS)
+			g.last_shot = 0;
+
+		g.shots[g.last_shot].alive = true;
+		g.shots[g.last_shot].x = g.ship_x + 32;
+		g.shots[g.last_shot].y = g.ship_y;
+		++g.last_shot;
+	}else if(g.fire)
 	{
 		Mix_PlayChannel(-1, g.fx_shoot, 0);
 		g.fire = false;
@@ -182,10 +285,28 @@ void MoveStuff()
 		++g.last_shot;
 	}
 
+	if (g.ship_x + 64 >= g.powerUp.x && g.ship_x <= g.powerUp.x + 40) {
+		if (g.ship_y + 64 >= g.powerUp.y && g.ship_y <= g.powerUp.y + 40) {
+			g.powerUp.alive = false;
+			g.ship_powerUp = 1;
+			g.shot = SDL_CreateTextureFromSurface(g.renderer, IMG_Load("assets/Missile.png"));
+			for (int i = 0; i < NUM_SHOTS; ++i)
+			{
+				g.shots[i].alive = false;
+			}
+		}
+	}
+
 	for(int i = 0; i < NUM_SHOTS; ++i)
 	{
 		if(g.shots[i].alive)
 		{
+			if (g.shots[i].x  >= g.myEnemy.x && g.shots[i].x <= g.myEnemy.x + 50) {
+				if (g.shots[i].y + 60 >= g.myEnemy.y && g.shots[i].y <= g.myEnemy.y + 80) {
+					g.shots[i].alive = false;
+					g.myEnemy.lives = g.myEnemy.lives - 1;
+				}
+			}
 			if(g.shots[i].x < SCREEN_WIDTH)
 				g.shots[i].x += SHOT_SPEED;
 			else
@@ -214,14 +335,33 @@ void Draw()
 	target = { g.ship_x, g.ship_y, 64, 64 };
 	SDL_RenderCopy(g.renderer, g.ship, nullptr, &target);
 
+	//Draw powerUp
+	if (g.powerUp.alive) {
+		target = { g.powerUp.x,g.powerUp.y,40,40 };
+		SDL_RenderCopy(g.renderer, g.powerUpTexture, nullptr, &target);
+	}
+	
+
+	//DRAW ENEMY
+	target = { g.myEnemy.x,g.myEnemy.y,300,300 };
+	SDL_RenderCopy(g.renderer, g.enemyTexture, nullptr, &target);
+
 	// Draw lasers --
 	for(int i = 0; i < NUM_SHOTS; ++i)
 	{
 		if(g.shots[i].alive)
 		{
-			target = { g.shots[i].x, g.shots[i].y, 64, 64 };
+			if(g.ship_powerUp==1)
+				target = { g.shots[i].x, g.shots[i].y, 80, 40 };
+			else
+				target = { g.shots[i].x, g.shots[i].y, 64, 64 };
 			SDL_RenderCopy(g.renderer, g.shot, nullptr, &target);
 		}
+	}
+
+	if (g.ship_powerUp == 1) {
+		target = { 0, 0, 80, 40 };
+		SDL_RenderCopy(g.renderer, g.shot, nullptr, &target);
 	}
 
 	// Finally swap buffers
